@@ -1,0 +1,2 @@
+text_prompt: "Count all objects"
+max_new_tokens: 400

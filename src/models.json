@@ -1,0 +1,16 @@
+[
+    {
+        "Model": "Molmo-7B-O-0924",
+        "AI2D test": 90.7,
+        "ChartQA test": 90.4,
+        "PixMo-Count test": 83.3,
+        "DocVQA test": 90.8,
+        "meta": {
+            "task_type": "object pointing",
+            "model_name": "Molmo",
+            "model_files": {
+                "checkpoint": "/weights/Molmo-7B-O-0924"
+            }
+        }
+    }
+]
