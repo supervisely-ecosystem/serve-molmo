@@ -10,6 +10,9 @@ from supervisely.nn.inference.inference import Inference
 from supervisely.geometry.point import Point
 import re
 import numpy as np
+from fastapi import Request
+import base64
+from io import BytesIO
 
 
 class Molmo(Inference):
@@ -118,3 +121,54 @@ class Molmo(Inference):
         geometry = sly.Point(row=prediction[1], col=prediction[0])
         label = sly.Label(geometry, obj_class)
         return label
+
+    def serve(self):
+        super().serve()
+        server = self._app.get_server()
+
+        @server.post("/visual_question_answering")
+        def visual_question_answering(request: Request):
+            api = request.state.api
+            state = request.state.state
+            if "image_id" in state:
+                image_id = state["image_id"]
+                image_np = api.image.download_np(image_id)
+                image_pil = Image.fromarray(image_np)
+            elif "image_path" in state:
+                image_pil = Image.open(state["image_path"])
+            elif "image_encoding" in state:
+                image_data = base64.b64decode(state["image_encoding"])
+                image_pil = Image.open(BytesIO(image_data))
+            else:
+                raise ValueError(
+                    "Request must contain either image_id, image_path or image_encoding!"
+                )
+
+            text_prompt = state["text_prompt"]
+
+            inputs = self.processor.process(
+                images=[image_pil],
+                text=text_prompt,
+            )
+            inputs = {k: v.to(self.device).unsqueeze(0) for k, v in inputs.items()}
+            inputs["images"] = inputs["images"].to(torch.bfloat16)
+            with torch.autocast(device_type="cuda", enabled=True, dtype=torch.bfloat16):
+                output = self.model.generate_from_batch(
+                    inputs,
+                    GenerationConfig(max_new_tokens=400, stop_strings="<|endoftext|>"),
+                    tokenizer=self.processor.tokenizer,
+                )
+            generated_tokens = output[0, inputs["input_ids"].size(1) :]
+            generated_text = self.processor.tokenizer.decode(
+                generated_tokens, skip_special_tokens=True
+            )
+
+            return {"answer": generated_text}
+
+        @server.post("/get_prompt_instructions")
+        def get_prompt_instructions(request: Request):
+            instructions = (
+                "Examples prompts for Molmo image-to-text inference: 'Describe this image.', 'How many apples "
+                "can you see on this image?'."
+            )
+            return {"instructions": instructions}
